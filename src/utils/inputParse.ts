@@ -4,8 +4,6 @@ import { normalizeHeader } from '../data/inputFields'
 export type InputRow = Record<string, string>
 
 const ASIN_RE = /^B[0-9A-Z]{9}$/i
-/** UPC-A for EJD portal: 11 digits (pad) or 12 digits. */
-const UPC_DIGITS_RE = /^\d{11,12}$/
 
 /** Strip non-digits and normalize to 12-digit UPC-A (leading zero when 11 digits). */
 export function normalizeUpcDigits(raw: string): string | null {
@@ -168,21 +166,6 @@ export function validateRows(
         ) {
           truncated = true
           break
-        }
-      }
-      if (field.kind === 'upc') {
-        const digits = value.replace(/\D/g, '')
-        if (!UPC_DIGITS_RE.test(digits)) {
-          if (
-            !pushCapped(
-              errors,
-              `Row ${rowNum}: ${field.label} must be 11 or 12 digits (UPC-A)`,
-              maxErrors,
-            )
-          ) {
-            truncated = true
-            break
-          }
         }
       }
     }

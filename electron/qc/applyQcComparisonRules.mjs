@@ -11,8 +11,6 @@ import { extractAmazonPackSizeFromCatalog } from './spApiPackAdapter.mjs'
 import { extractDescriptionTexts, extractSpecificationTexts } from './qcExtraFields.mjs'
 import { runHaikuTitleImageScores } from './anthropicHaiku.mjs'
 import { combineQcVerdict } from './qcVerdict.mjs'
-import { titlesReferToSameProduct } from './titleProductCompare.mjs'
-
 const GATE_COMPARISON_KEY_RE = /^gate\d+$/
 
 function isBrandAliasMatch(vendorBrand, amazonBrand, aliases) {
@@ -184,7 +182,35 @@ export async function applyQcComparisonRules(input) {
     comparisons.find((c) => c.key === 'upc')?.outcome === 'MATCH' ||
     upcDigitsEqual(byKey('upc')?.sourceValue, byKey('upc')?.targetValue)
 
-  if (titleRow) {
+  const coreKeys = ['title', 'brand', 'pack', 'model', 'upc', 'image']
+  const missingCoreLabels = []
+  for (const key of coreKeys) {
+    const idx = comparisons.findIndex((c) => c.key === key)
+    const row = idx >= 0 ? comparisons[idx] : undefined
+    if (!row || isEmptyCoreValue(row.sourceValue) || isEmptyCoreValue(row.targetValue)) {
+      missingCoreLabels.push(row?.label ?? key.toUpperCase())
+      if (idx >= 0) comparisons[idx] = withOutcome(comparisons[idx], 'MISMATCH')
+    }
+  }
+  const skipModelQc = missingCoreLabels.length > 0
+  if (skipModelQc) {
+    log.push(`Skipped model QC — missing ${missingCoreLabels.join(', ')} — FAIL`)
+    const titleIdx = comparisons.findIndex((c) => c.key === 'title')
+    if (titleIdx >= 0 && comparisons[titleIdx].outcome === 'MISMATCH') {
+      titleHasOutcome = true
+    } else if (titleIdx >= 0 && comparisons[titleIdx].outcome == null) {
+      const row = comparisons[titleIdx]
+      const sim = titleSimilarityPercent(row.sourceValue, row.targetValue)
+      comparisons[titleIdx] = withOutcome(row, sim >= titleThreshold ? 'MATCH' : 'MISMATCH', {
+        scorePercent: sim,
+      })
+      titleHasOutcome = true
+    }
+    const imageIdx = comparisons.findIndex((c) => c.key === 'image')
+    if (imageIdx >= 0 && comparisons[imageIdx].outcome != null) imageHasOutcome = true
+  }
+
+  if (titleRow && !skipModelQc) {
     const vendorModelForTitle = modelRow?.sourceValue === QC_CORE_EMPTY ? '' : modelRow?.sourceValue
     const amazonModelForTitle = modelRow?.targetValue === QC_CORE_EMPTY ? '' : modelRow?.targetValue
 
@@ -208,22 +234,7 @@ export async function applyQcComparisonRules(input) {
       if (haiku.titlePercent != null) {
         const idx = comparisons.findIndex((c) => c.key === 'title')
         if (idx >= 0) {
-          let outcome = haiku.titlePercent >= titleThreshold ? 'MATCH' : 'MISMATCH'
-          if (
-            outcome === 'MISMATCH' &&
-            titlesReferToSameProduct(
-              titleRow.sourceValue,
-              titleRow.targetValue,
-              vendorModelForTitle,
-              amazonModelForTitle,
-            )
-          ) {
-            outcome = 'MATCH'
-          }
-          if (outcome === 'MISMATCH' && upcMatchedForContext && haiku.titlePercent >= 45) {
-            outcome = 'MATCH'
-            log.push(`Title: promoted to MATCH (UPC match + Haiku ${haiku.titlePercent}%)`)
-          }
+          const outcome = haiku.titlePercent >= titleThreshold ? 'MATCH' : 'MISMATCH'
           comparisons[idx] = withOutcome(comparisons[idx], outcome, {
             scorePercent: haiku.titlePercent,
           })
@@ -256,27 +267,6 @@ export async function applyQcComparisonRules(input) {
       log.push('Haiku title/image: unavailable — manual review for unresolved fields')
     }
 
-    const titleIdx = comparisons.findIndex((c) => c.key === 'title')
-    if (titleIdx >= 0) {
-      const current = comparisons[titleIdx]
-      const shouldMatch = titlesReferToSameProduct(
-        titleRow.sourceValue,
-        titleRow.targetValue,
-        vendorModelForTitle,
-        amazonModelForTitle,
-      )
-      if (shouldMatch && current.outcome !== 'MATCH') {
-        comparisons[titleIdx] = withOutcome(current, 'MATCH', {
-          scorePercent: current.scorePercent ?? 90,
-        })
-        titleHasOutcome = true
-        log.push('Title: same product (model/spec heuristic override)')
-      } else if (!titleHasOutcome && shouldMatch) {
-        comparisons[titleIdx] = withOutcome(current, 'MATCH', { scorePercent: 90 })
-        titleHasOutcome = true
-        log.push('Title: same product (model/spec heuristic)')
-      }
-    }
   }
 
   const gates = (input.gateComparisons ?? []).filter((row) =>

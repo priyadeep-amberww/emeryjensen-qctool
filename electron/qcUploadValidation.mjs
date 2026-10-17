@@ -5,7 +5,6 @@ export const QC_UPLOAD_MAX_ROWS = 15000
 export const QC_VALIDATE_PREVIEW_ROWS = 100
 const ALLOWED_FILE_EXTENSIONS = new Set(['.csv', '.txt', '.tsv'])
 const ASIN_RE = /^B[0-9A-Z]{9}$/i
-const UPC_DIGITS_RE = /^\d{11,12}$/
 
 function normalizeUpcDigits(raw) {
   const digits = String(raw ?? '').replace(/\D/g, '')
@@ -141,21 +140,6 @@ function validateRows(rows, fields, maxErrors = DEFAULT_MAX_ERRORS) {
         ) {
           truncated = true
           break
-        }
-      }
-      if (field.kind === 'upc') {
-        const digits = value.replace(/\D/g, '')
-        if (!UPC_DIGITS_RE.test(digits)) {
-          if (
-            !pushCapped(
-              errors,
-              `Row ${rowNum}: ${field.label} must be 11 or 12 digits (UPC-A)`,
-              maxErrors,
-            )
-          ) {
-            truncated = true
-            break
-          }
         }
       }
     }

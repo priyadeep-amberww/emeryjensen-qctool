@@ -314,12 +314,6 @@ function compareField(key, source, target, field) {
   return { outcome, yesNo: outcomeToYesNo(outcome), label: outcomeLabel(outcome) }
 }
 
-function verdictDisplay(result) {
-  if (result.verdict) return result.verdict.replace(/_/g, ' ')
-  if (result.captureStatus) return result.captureStatus.replace(/_/g, ' ').toUpperCase()
-  return ''
-}
-
 function coalesce(...values) {
   for (const v of values) {
     const t = v?.trim()
@@ -412,10 +406,22 @@ export function buildStandardQcExportRow(result) {
     .map((c) => `${c.label}: ${c.sourceValue} → ${c.targetValue}`)
     .join(' | ')
 
+  const imageYesNo = outcomeToYesNo(imageOutcome)
+  const coreVerdict = [
+    packCompare.yesNo,
+    brandCompare.yesNo,
+    titleCompare.yesNo,
+    modelCompare.yesNo,
+    upcCompare.yesNo,
+    imageYesNo,
+  ].every((value) => value === 'YES')
+    ? 'PASS'
+    : 'FAIL'
+
   return [
     asin,
     vendorModel,
-    verdictDisplay(result),
+    coreVerdict,
     packVendor,
     packAmazon,
     packCompare.yesNo,
@@ -433,7 +439,7 @@ export function buildStandardQcExportRow(result) {
     upcAmazon,
     upcCompare.yesNo,
     imagePct,
-    outcomeToYesNo(imageOutcome),
+    imageYesNo,
     coalesce(vendor.packAttrs, packVendor ? `pack_size: ${packVendor}` : ''),
     coalesce(amazon.packAttrs, packAmazon ? `pack_size: ${packAmazon}` : ''),
     amazonSpecs,

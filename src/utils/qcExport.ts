@@ -19,13 +19,9 @@ export function bumpExportVerdictCounts(
   result: QcResult,
 ): ExportVerdictCounts {
   const next = { ...counts, all: counts.all + 1 }
-  if (result.captureStatus) {
-    if (isQcExportException(result)) next.exceptions += 1
-    return next
-  }
   if (result.verdict === 'PASS') next.pass += 1
   else if (result.verdict === 'FAIL') next.fail += 1
-  else if (result.verdict) next.manual += 1
+  else if (result.verdict === 'MANUAL_REVIEW') next.manual += 1
   if (isQcExportException(result)) next.exceptions += 1
   return next
 }
@@ -52,10 +48,6 @@ export function countExportVerdicts(results: QcResult[]): ExportVerdictCounts {
   let manual = 0
   let exceptions = 0
   for (const row of results) {
-    if (row.captureStatus) {
-      if (isQcExportException(row)) exceptions++
-      continue
-    }
     if (row.verdict === 'PASS') pass++
     else if (row.verdict === 'FAIL') fail++
     else if (row.verdict === 'MANUAL_REVIEW') manual++

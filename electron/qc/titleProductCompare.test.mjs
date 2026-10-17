@@ -23,19 +23,16 @@ test('short vendor title matches long Amazon title when model aligns', () => {
   )
 })
 
-test('core identity pass yields PASS verdict even if brand/image differ', () => {
+test('core miss yields FAIL even when UPC and model match', () => {
   const verdict = combineQcVerdict({
     comparisons: [
       { key: 'upc', outcome: 'MATCH' },
       { key: 'model', outcome: 'MATCH' },
       { key: 'title', outcome: 'MATCH' },
-      { key: 'pack', outcome: 'REVIEW' },
+      { key: 'pack', outcome: 'MISMATCH' },
       { key: 'brand', outcome: 'MISMATCH' },
       { key: 'image', outcome: 'MISMATCH' },
     ],
-    gateVerdict: 'PASS',
-    titleHasOutcome: true,
-    imageHasOutcome: true,
   })
-  assert.equal(verdict, 'PASS')
+  assert.equal(verdict, 'FAIL')
 })

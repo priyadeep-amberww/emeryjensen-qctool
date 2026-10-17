@@ -45,6 +45,9 @@ export function exactCompareOutcome(source, target) {
 }
 
 export function comparisonOutcomeForKey(key, sourceValue, targetValue, thresholds, _options, field) {
+  if (key === 'pack') {
+    return exactCompareOutcome(sourceValue, targetValue) === 'MATCH' ? 'MATCH' : 'MISMATCH'
+  }
   if (field?.outcome === 'MATCH' || field?.outcome === 'MISMATCH' || field?.outcome === 'REVIEW') {
     return field.outcome
   }

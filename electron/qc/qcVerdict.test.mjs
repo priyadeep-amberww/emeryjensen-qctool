@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { combineQcVerdict } from './qcVerdict.mjs'
 
-test('UPC match: title/image mismatch is MANUAL_REVIEW not FAIL', () => {
+test('any core miss is FAIL', () => {
   const verdict = combineQcVerdict({
     comparisons: [
       { key: 'upc', outcome: 'MATCH' },
@@ -12,26 +12,34 @@ test('UPC match: title/image mismatch is MANUAL_REVIEW not FAIL', () => {
       { key: 'title', outcome: 'MISMATCH' },
       { key: 'image', outcome: 'MISMATCH' },
     ],
-    gateVerdict: 'PASS',
-    titleHasOutcome: true,
-    imageHasOutcome: true,
   })
-  assert.equal(verdict, 'MANUAL_REVIEW')
+  assert.equal(verdict, 'FAIL')
 })
 
-test('UPC + model + title match: PASS even when brand/image differ', () => {
+test('pack review or mismatch is FAIL', () => {
   const verdict = combineQcVerdict({
     comparisons: [
       { key: 'upc', outcome: 'MATCH' },
-      { key: 'brand', outcome: 'MISMATCH' },
+      { key: 'brand', outcome: 'MATCH' },
       { key: 'model', outcome: 'MATCH' },
       { key: 'pack', outcome: 'REVIEW' },
       { key: 'title', outcome: 'MATCH' },
-      { key: 'image', outcome: 'MISMATCH' },
+      { key: 'image', outcome: 'MATCH' },
     ],
-    gateVerdict: 'PASS',
-    titleHasOutcome: true,
-    imageHasOutcome: true,
+  })
+  assert.equal(verdict, 'FAIL')
+})
+
+test('all six MATCH is PASS', () => {
+  const verdict = combineQcVerdict({
+    comparisons: [
+      { key: 'upc', outcome: 'MATCH' },
+      { key: 'brand', outcome: 'MATCH' },
+      { key: 'model', outcome: 'MATCH' },
+      { key: 'pack', outcome: 'MATCH' },
+      { key: 'title', outcome: 'MATCH' },
+      { key: 'image', outcome: 'MATCH' },
+    ],
   })
   assert.equal(verdict, 'PASS')
 })

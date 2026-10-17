@@ -39,7 +39,7 @@ export const SIX_SKU_FIXTURES = [
       amazonModel: 'WA6RB7004',
       vendorPack: 1,
       amazonPack: 1,
-      packOutcome: 'REVIEW',
+      packOutcome: 'MATCH',
       brandOutcome: 'MISMATCH',
       modelOutcome: 'MATCH',
       specMustNotInclude: ['1.3 month', 'title_differentiation'],

@@ -77,6 +77,9 @@ export function comparisonOutcomeForKey(
   options?: QcComparisonOptions,
   field?: Pick<QcComparisonField, 'outcome' | 'scorePercent'>,
 ): QcCompareOutcome {
+  if (key === 'pack') {
+    return exactCompareOutcome(sourceValue, targetValue) === 'MATCH' ? 'MATCH' : 'MISMATCH'
+  }
   if (
     field?.outcome === 'MATCH' ||
     field?.outcome === 'MISMATCH' ||

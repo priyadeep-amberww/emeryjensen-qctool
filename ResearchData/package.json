@@ -1,0 +1,11 @@
+{
+  "name": "universal-amazon-pack-size-engine",
+  "version": "1.0.0",
+  "description": "Standalone Amazon pack-size extractor (outer bundle + inner count). Zero dependencies. Copy this folder into any other tool.",
+  "type": "commonjs",
+  "main": "universalAmazonPackSizeEngine.js",
+  "exports": {
+    ".": "./universalAmazonPackSizeEngine.js",
+    "./engine": "./universalAmazonPackSizeEngine.js"
+  }
+}

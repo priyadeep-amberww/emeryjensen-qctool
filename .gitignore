@@ -30,9 +30,7 @@ lerna-debug.log*
 # Local overrides
 *.local
 
-# Proprietary research, pack engine, and algorithm assets (keep locally; not in repo)
-ResearchData/
-researchdata/
+# Proprietary algorithm assets (keep locally; not in repo)
 Implementation-Research/
 **/sophisticated-algorithms/
 **/Sophisticated Algorithms/
