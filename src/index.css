@@ -1,0 +1,112 @@
+/* Tailwind utilities only — skip preflight so MUI base styles stay intact */
+@layer theme, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Adwaita & System Font Definitions and Global Resets */
+@font-face {
+  font-family: 'Adwaita Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Adwaita Sans'), local('Cantarell'), local('Inter'), local('Segoe UI');
+}
+
+@font-face {
+  font-family: 'Adwaita Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: local('Adwaita Sans Medium'), local('Cantarell Medium'), local('Inter Medium'), local('Segoe UI Semibold');
+}
+
+@font-face {
+  font-family: 'Adwaita Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Adwaita Sans SemiBold'), local('Cantarell Bold'), local('Inter SemiBold'), local('Segoe UI Bold');
+}
+
+@font-face {
+  font-family: 'Adwaita Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local('Adwaita Mono'), local('JetBrains Mono'), local('Consolas'), local('Cascadia Code'), local('Courier New');
+}
+
+@font-face {
+  font-family: 'Adwaita Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local('Adwaita Mono Bold'), local('JetBrains Mono Bold'), local('Consolas Bold'), local('Cascadia Code Bold');
+}
+
+:root {
+  --font-sans: 'Adwaita Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: 'Adwaita Mono', 'JetBrains Mono', Consolas, 'Cascadia Code', 'Courier New', monospace;
+  --font-size-base: 12px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  line-height: 1.45;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
+}
+
+#root {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Fast and subtle scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.25);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.45);
+}
+
+/* Micro-animations */
+@keyframes fadeInSubtle {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeInSubtle 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
