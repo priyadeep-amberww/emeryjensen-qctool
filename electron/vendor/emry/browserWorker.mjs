@@ -15,6 +15,7 @@ import {
   markSessionDisarmed,
   setVendorSessionPhase,
 } from './sessionState.mjs'
+import { setScrapeHalted } from './scrapeHalt.mjs'
 
 const rl = readline.createInterface({ input: process.stdin })
 
@@ -44,6 +45,18 @@ async function handle(raw) {
   try {
     if (typeof request.profilePath === 'string' && request.profilePath) {
       setEmryProfilePath(request.profilePath)
+    }
+
+    if (request.cmd === 'halt') {
+      setScrapeHalted(true)
+      reply({ id, ok: true, status: getVendorSessionStatus(), log: ['Portal scrape halted'] })
+      return
+    }
+
+    if (request.cmd === 'clearHalt') {
+      setScrapeHalted(false)
+      reply({ id, ok: true, status: getVendorSessionStatus(), log: ['Portal scrape halt cleared'] })
+      return
     }
 
     if (request.cmd === 'status') {

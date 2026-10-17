@@ -7,6 +7,7 @@ import {
   extractUpcForTarget,
 } from './extract/fieldHarvest.mjs'
 import { isProductDetailPage } from './extract/parseProductDetailHtml.mjs'
+import { isScrapeHalted } from './scrapeHalt.mjs'
 
 const SEARCH_TIMEOUT_MS = 25_000
 const RESULTS_POLL_MS = 400
@@ -114,6 +115,9 @@ export async function searchProductByUpcInPortal(upc12, logLine) {
   const deadline = Date.now() + SEARCH_TIMEOUT_MS
 
   while (Date.now() < deadline) {
+    if (isScrapeHalted()) {
+      return { ok: false, kind: 'halted', error: 'QC run halted.' }
+    }
     const hit = page.frames().find((frame) => FRAME_URL_RE.test(frame.url()))
     if (!hit) {
       await pause(RESULTS_POLL_MS)

@@ -8,12 +8,20 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { appendQcBatchResult, getQcBatchSession, pauseQcBatch, resumeQcBatch, stopQcBatch } from '../services/qcApi'
+import {
+  appendQcBatchResult,
+  getQcBatchSession,
+  pauseQcBatch,
+  pingInternet,
+  resumeQcBatch,
+  startQcBatch,
+  stopQcBatch,
+} from '../services/qcApi'
 import { ensureVendorLoginBeforeScrape } from '../services/vendorSession/vendorLoginGate'
 import { ScrapeOperationError } from '../errorEngine/types'
 import { VENDOR_INTEGRATION_ID } from '../config/vendorIntegration'
 import { completeBatchInProcess } from '../services/qc/qcEngineService'
-import { processQcRowForBatch } from '../services/qc/qcRowApi'
+import { processQcRowForBatch, QcControlInterrupt } from '../services/qc/qcRowApi'
 import { useAiUsage } from './AiUsageContext'
 import { useErrorEngine } from './ErrorEngineContext'
 import { useLogs } from './LogsContext'
@@ -22,9 +30,9 @@ import { useSettings } from './SettingsContext'
 import { emitQcErrorNotification } from '../services/qc/qcEngineNotifications'
 import type { QcProcessStatus, QcResult } from '../types/qc'
 import type { InputRow } from '../utils/inputParse'
-import { captureStatusLabel } from '../services/qc/listingQcMapper'
+import { buildFailedQcResult, captureStatusLabel } from '../services/qc/listingQcMapper'
 import {
-  bumpExportVerdictCounts,
+  countExportVerdicts,
   emptyExportVerdictCounts,
   type ExportVerdictCounts,
 } from '../utils/qcExport'
@@ -51,10 +59,13 @@ type BatchRunContextValue = {
   currentBatchLabel: string | null
   sessionId: string | null
   hasBatchQueue: boolean
+  canStartFromLive: boolean
   start: (payload: StartQcPayload) => Promise<void>
-  pause: () => Promise<void>
-  resume: () => Promise<void>
-  stop: () => Promise<void>
+  startValidated: () => Promise<void>
+  rememberValidatedSession: (sessionId: string | null) => void
+  pause: () => Promise<boolean>
+  resume: () => Promise<boolean>
+  stop: () => Promise<boolean>
   reset: () => Promise<void>
 }
 
@@ -89,6 +100,8 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
   const [startedAt, setStartedAt] = useState<number | null>(null)
   const [currentBatchLabel, setCurrentBatchLabel] = useState<string | null>(null)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [validatedSessionId, setValidatedSessionId] = useState<string | null>(null)
+  const [networkHold, setNetworkHold] = useState(false)
   const runSeqRef = useRef(0)
   const batchLabelRef = useRef<string | null>(null)
   const prevStatusRef = useRef<QcProcessStatus>(status)
@@ -98,6 +111,12 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
   const statusRef = useRef<QcProcessStatus>(status)
   statusRef.current = status
   const processingRowRef = useRef(false)
+  const rowFlightRef = useRef(0)
+  const controlEpochRef = useRef(0)
+  const validatedSessionIdRef = useRef<string | null>(null)
+  const networkHoldRef = useRef(false)
+  validatedSessionIdRef.current = validatedSessionId
+  networkHoldRef.current = networkHold
   const passCountRef = useRef(0)
   const { handleScrapeFailure, isRecovering, resetRecoveryUi } = useErrorEngine()
   const running = status === 'running'
@@ -115,7 +134,22 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
     setResultsRevision(0)
   }, [])
 
+  const rememberValidatedSession = useCallback((next: string | null) => {
+    validatedSessionIdRef.current = next
+    setValidatedSessionId(next)
+  }, [])
+
+  const syncVerdictCounts = useCallback((rows: readonly QcResult[]) => {
+    const counts = countExportVerdicts(rows)
+    setExportVerdictCounts(counts)
+    passCountRef.current = counts.pass
+    setPassCount(counts.pass)
+  }, [])
+
   const reset = useCallback(async () => {
+    controlEpochRef.current += 1
+    networkHoldRef.current = false
+    setNetworkHold(false)
     const sessionId = sessionIdRef.current
     if (
       sessionId &&
@@ -134,10 +168,11 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
     setCurrentBatchLabel(null)
     batchLabelRef.current = null
     sessionReadyRef.current = false
+    rememberValidatedSession(null)
     resetRecoveryUi()
     clearExportLockSnapshot()
     appendLog({ category: 'SYSTEM', message: 'QC workspace reset' })
-  }, [appendLog, clearLocalResults, resetRecoveryUi])
+  }, [appendLog, clearLocalResults, rememberValidatedSession, resetRecoveryUi])
 
   const start = useCallback(
     async (payload: StartQcPayload) => {
@@ -183,6 +218,7 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
       setStartedAt(Date.now())
       prevStatusRef.current = 'running'
       setStatus('running')
+      rememberValidatedSession(null)
       lockExportSnapshot(readExportDraft())
 
       try {
@@ -233,11 +269,39 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
         batchLabel: label,
       })
     },
-    [appendLog, clearLocalResults, settings],
+    [appendLog, clearLocalResults, rememberValidatedSession, settings],
   )
 
+  const startValidated = useCallback(async () => {
+    const idleLike =
+      statusRef.current === 'idle' ||
+      statusRef.current === 'done' ||
+      statusRef.current === 'stopped'
+    if (!idleLike) return
+    const sessionId = validatedSessionIdRef.current
+    if (!sessionId) {
+      appendLog({
+        category: 'ERROR',
+        message: 'Cannot start QC',
+        detail: 'Validate a file on Upload first.',
+      })
+      return
+    }
+    const started = await startQcBatch({ sessionId })
+    if (!started.ok) {
+      appendLog({
+        category: 'ERROR',
+        message: 'Cannot start QC',
+        detail: started.error,
+      })
+      return
+    }
+    await start({ sessionId })
+  }, [appendLog, start])
+
   const pause = useCallback(async () => {
-    if (statusRef.current !== 'running') return
+    if (statusRef.current !== 'running') return false
+    controlEpochRef.current += 1
     const sessionId = sessionIdRef.current
     if (sessionId) {
       const result = await pauseQcBatch({ sessionId })
@@ -248,14 +312,16 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
           detail: result.error,
           batchLabel: batchLabelRef.current ?? undefined,
         })
-        return
+        return false
       }
     }
     setStatus('paused')
+    return true
   }, [appendLog])
 
   const resume = useCallback(async () => {
-    if (statusRef.current !== 'paused') return
+    if (statusRef.current !== 'paused') return false
+    const epoch = controlEpochRef.current
     const label = batchLabelRef.current ?? undefined
     sessionReadyRef.current = false
     try {
@@ -278,8 +344,9 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
         detail,
         batchLabel: label,
       })
-      return
+      return false
     }
+    if (controlEpochRef.current !== epoch || statusRef.current !== 'paused') return false
 
     const sessionId = sessionIdRef.current
     if (sessionId) {
@@ -291,14 +358,21 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
           detail: result.error,
           batchLabel: label,
         })
-        return
+        return false
       }
     }
+    if (controlEpochRef.current !== epoch || statusRef.current !== 'paused') return false
+    networkHoldRef.current = false
+    setNetworkHold(false)
     setStatus('running')
+    return true
   }, [appendLog, settings])
 
   const stop = useCallback(async () => {
-    if (statusRef.current !== 'running' && statusRef.current !== 'paused') return
+    if (statusRef.current !== 'running' && statusRef.current !== 'paused') return false
+    controlEpochRef.current += 1
+    networkHoldRef.current = false
+    setNetworkHold(false)
     const sessionId = sessionIdRef.current
     if (sessionId) {
       const result = await stopQcBatch({ sessionId })
@@ -309,10 +383,11 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
           detail: result.error,
           batchLabel: batchLabelRef.current ?? undefined,
         })
-        return
+        return false
       }
     }
     setStatus('stopped')
+    return true
   }, [appendLog])
 
   useEffect(() => {
@@ -358,11 +433,19 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
     }
 
     let cancelled = false
+    const flight = ++rowFlightRef.current
     processingRowRef.current = true
+    const epochAtStart = controlEpochRef.current
 
     const processRow = async () => {
       await new Promise((resolve) => window.setTimeout(resolve, TICK_MS))
-      if (cancelled || statusRef.current !== 'running') return
+      if (
+        cancelled ||
+        statusRef.current !== 'running' ||
+        controlEpochRef.current !== epochAtStart
+      ) {
+        return
+      }
 
       const rowIndex = completedCount
       const row = queueRef.current[rowIndex]
@@ -382,7 +465,15 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
           brandAliases: aliasPairs,
           loginGateRefs: { sessionReady: sessionReadyRef },
           appendLog,
+          sessionId: sessionId ?? undefined,
         })
+        if (
+          cancelled ||
+          statusRef.current !== 'running' ||
+          controlEpochRef.current !== epochAtStart
+        ) {
+          return
+        }
         const nextCount = rowIndex + 1
         const sku =
           result.identity.find((f) => f.key === 'sku')?.value ??
@@ -410,11 +501,7 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        setExportVerdictCounts((prev) => bumpExportVerdictCounts(prev, result))
-        if (result.verdict === 'PASS') {
-          passCountRef.current += 1
-          setPassCount(passCountRef.current)
-        }
+        syncVerdictCounts(completedRef.current)
         setCompletedCount(nextCount)
         setResultsRevision((rev) => rev + 1)
 
@@ -505,7 +592,58 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch (error) {
+        if (error instanceof QcControlInterrupt) return
+        if (
+          cancelled ||
+          statusRef.current !== 'running' ||
+          controlEpochRef.current !== epochAtStart
+        ) {
+          return
+        }
+        if (error instanceof ScrapeOperationError && error.kind === 'parse') {
+          const result = buildFailedQcResult(row, error.message)
+          const nextCount = rowIndex + 1
+          const sku = result.identity.find((f) => f.key === 'sku')?.value ?? result.id
+          completedRef.current.push(result)
+          if (sessionId) {
+            const stored = await appendQcBatchResult(sessionId, result)
+            if (!stored.ok) {
+              appendLog({
+                category: 'ERROR',
+                message: 'Could not persist QC result',
+                detail: stored.error,
+                batchLabel: label,
+              })
+            }
+          }
+          syncVerdictCounts(completedRef.current)
+          setCompletedCount(nextCount)
+          setResultsRevision((rev) => rev + 1)
+          appendLog({
+            category: 'ERROR',
+            message: `FAIL — ${sku}`,
+            detail: `${nextCount}/${total} · ${error.message}`,
+            batchLabel: label,
+          })
+          return
+        }
+
         sessionReadyRef.current = false
+        if (error instanceof ScrapeOperationError && error.kind === 'network') {
+          const online = await pingInternet().catch(() => false)
+          if (!online && statusRef.current === 'running') {
+            networkHoldRef.current = true
+            setNetworkHold(true)
+            appendLog({
+              category: 'WARNING',
+              message: 'Internet dropped during this SKU — QC paused',
+              detail: 'The same SKU will run again after the connection is confirmed.',
+              batchLabel: label,
+            })
+            await pause()
+            return
+          }
+        }
         if (!settings.errorEngineEnabled) {
           const detail = error instanceof Error ? error.message : 'Scrape failed'
           emitQcErrorNotification({
@@ -535,7 +673,7 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
           sessionReadyRef.current = true
         }
       } finally {
-        processingRowRef.current = false
+        if (rowFlightRef.current === flight) processingRowRef.current = false
       }
     }
 
@@ -543,7 +681,6 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true
-      processingRowRef.current = false
     }
   }, [
     status,
@@ -558,7 +695,73 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
     handleScrapeFailure,
     pause,
     resume,
+    syncVerdictCounts,
   ])
+
+  useEffect(() => {
+    if (status !== 'running' && !networkHold) return
+    let cancelled = false
+
+    const watch = async () => {
+      if (cancelled) return
+      let online = false
+      try {
+        online = await pingInternet()
+      } catch {
+        online = false
+      }
+      if (cancelled) return
+
+      if (!online && statusRef.current === 'running') {
+        networkHoldRef.current = true
+        setNetworkHold(true)
+        appendLog({
+          category: 'WARNING',
+          message: 'Internet unreachable — QC paused',
+          detail: 'Pinging every minute. The run resumes from the last unfinished SKU after the link is confirmed.',
+          batchLabel: batchLabelRef.current ?? undefined,
+        })
+        await pause()
+        return
+      }
+
+      if (online && networkHoldRef.current && statusRef.current === 'paused') {
+        let confirmed = false
+        try {
+          confirmed = await pingInternet()
+        } catch {
+          confirmed = false
+        }
+        if (
+          cancelled ||
+          !confirmed ||
+          !networkHoldRef.current ||
+          statusRef.current !== 'paused'
+        ) {
+          return
+        }
+        appendLog({
+          category: 'SYSTEM',
+          message: 'Internet restored — logging back into the portal',
+          detail: 'Resuming from the last unfinished SKU',
+          batchLabel: batchLabelRef.current ?? undefined,
+        })
+        const resumed = await resume()
+        if (resumed) {
+          networkHoldRef.current = false
+          setNetworkHold(false)
+        }
+      }
+    }
+
+    void watch()
+    const intervalMs = networkHold ? 60_000 : 15_000
+    const id = window.setInterval(() => void watch(), intervalMs)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
+  }, [status, networkHold, appendLog, pause, resume])
 
   const runValue = useMemo(
     () => ({
@@ -574,7 +777,12 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
       currentBatchLabel,
       sessionId,
       hasBatchQueue: total > 0,
+      canStartFromLive:
+        (status === 'idle' || status === 'done' || status === 'stopped') &&
+        Boolean(validatedSessionId),
       start,
+      startValidated,
+      rememberValidatedSession,
       pause,
       resume,
       stop,
@@ -592,7 +800,10 @@ export function BatchDemoProvider({ children }: { children: ReactNode }) {
       startedAt,
       currentBatchLabel,
       sessionId,
+      validatedSessionId,
       start,
+      startValidated,
+      rememberValidatedSession,
       pause,
       resume,
       stop,

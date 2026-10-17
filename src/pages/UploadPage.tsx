@@ -45,6 +45,7 @@ import {
 } from '../utils/inputParse'
 import { validateUpload, startQcBatch } from '../services/qcApi'
 import { useLogs } from '../context/LogsContext'
+import { useBatchRun } from '../context/BatchDemoContext'
 import { useSettings } from '../context/SettingsContext'
 import { ensureVendorLoginBeforeScrape } from '../services/vendorSession/vendorLoginGate'
 import { ScrapeOperationError } from '../errorEngine/types'
@@ -450,6 +451,11 @@ export function UploadPage({ onStartQc }: UploadPageProps) {
   const { showToast } = useToast()
   const { settings } = useSettings()
   const { appendLog } = useLogs()
+  const { rememberValidatedSession } = useBatchRun()
+
+  useEffect(() => {
+    if (!validationSessionId) rememberValidatedSession(null)
+  }, [validationSessionId, rememberValidatedSession])
   const uploadSessionReadyRef = useRef(false)
 
   const draftIdSet = useMemo(() => new Set(draftIds), [draftIds])
@@ -630,6 +636,7 @@ export function UploadPage({ onStartQc }: UploadPageProps) {
       startTransition(() => {
         setValidatedPreview(nextPreview)
         setValidationSessionId(response.sessionId)
+        rememberValidatedSession(response.sessionId)
         setPreviewEpoch((n) => n + 1)
       })
       showToast(`${response.rowCount.toLocaleString()} rows validated successfully`, 'success')

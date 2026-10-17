@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     appendBatchResult: (payload) => ipcRenderer.invoke('qc:appendBatchResult', payload),
     exportBatch: (request) => ipcRenderer.invoke('qc:exportBatch', request),
     processRow: (payload) => ipcRenderer.invoke('qc:processRow', payload),
+    pingInternet: () => ipcRenderer.invoke('qc:pingInternet'),
   },
   vendorSession: {
     login: (request) => ipcRenderer.invoke('vendorSession:login', request),

@@ -4,6 +4,16 @@ import { getVendorScraper } from '../vendor/scrapeRegistry.mjs'
 import { buildCaptureRowPayload } from './buildCaptureRow.mjs'
 import { evaluateEjdQcGates } from './ejdQcGates.mjs'
 import { applyQcComparisonRules } from './applyQcComparisonRules.mjs'
+import { isRunHalted } from './runControl.mjs'
+
+function haltedResponse() {
+  return {
+    ok: false,
+    phase: 'vendor',
+    kind: 'halted',
+    error: 'QC run halted.',
+  }
+}
 
 function pickAsin(row) {
   const asin = row?.asin
@@ -20,6 +30,8 @@ export async function processQcRow(payload) {
   if (!row || typeof row !== 'object') {
     return { ok: false, phase: 'vendor', error: 'Invalid row payload.' }
   }
+
+  if (isRunHalted(payload.sessionId)) return haltedResponse()
 
   const asin = pickAsin(row)
   if (!asin) {
@@ -47,12 +59,44 @@ export async function processQcRow(payload) {
   })
 
   if (!vendorResult.ok) {
+    if (vendorResult.kind === 'halted' || isRunHalted(payload.sessionId)) {
+      return haltedResponse()
+    }
+    if (vendorResult.kind === 'parse') {
+      const scrapeLog = [
+        vendorResult.error || 'Row data cannot be searched. Marking FAIL and continuing.',
+      ]
+      const result = buildCaptureRowPayload({
+        row,
+        captureStatus: 'bad_parse',
+        vendorExtract: null,
+        amazonCatalogJson: null,
+        scrapeLog,
+        verdict: 'FAIL',
+        comparisons: [],
+      })
+      return { ok: true, mode: 'capture', result }
+    }
     return {
       ok: false,
       phase: 'vendor',
       error: vendorResult.error,
       kind: vendorResult.kind,
     }
+  }
+
+  if (vendorResult.rowVerdict === 'FAIL') {
+    const result = buildCaptureRowPayload({
+      row,
+      captureStatus: vendorResult.captureStatus ?? 'bad_parse',
+      vendorExtract: null,
+      amazonCatalogJson: null,
+      confidence: 0,
+      scrapeLog: Array.isArray(vendorResult.log) ? vendorResult.log : [],
+      verdict: 'FAIL',
+      comparisons: [],
+    })
+    return { ok: true, mode: 'capture', result }
   }
 
   const scrapeLog = Array.isArray(vendorResult.log) ? [...vendorResult.log] : []
@@ -66,6 +110,8 @@ export async function processQcRow(payload) {
   if (!captureStatus) {
     captureStatus = vendorExtract ? 'captured' : 'bad_parse'
   }
+
+  if (isRunHalted(payload.sessionId)) return haltedResponse()
 
   const amazonResult = await Promise.race([
     fetchAmazonListingByAsin(asin),

@@ -12,6 +12,9 @@ import {
 } from './qcBatchStore.mjs'
 import { QC_VALIDATE_PREVIEW_ROWS, runUploadValidation } from './qcUploadValidation.mjs'
 import { processQcRow } from './qc/processQcRow.mjs'
+import { clearRunControl, setRunControl } from './qc/runControl.mjs'
+import { pingInternet } from './net/pingInternet.mjs'
+import { workerSetHalt } from './vendor/emry/browserHost.mjs'
 
 export function registerQcIpc() {
   ipcMain.handle('qc:validateUpload', async (_event, request) => {
@@ -58,6 +61,8 @@ export function registerQcIpc() {
     if (!running) {
       return { ok: false, error: 'Unable to start QC for this session.' }
     }
+    setRunControl(sessionId, 'running')
+    workerSetHalt(false)
     return { ok: true, sessionId, total: running.rows.length }
   })
 
@@ -70,6 +75,8 @@ export function registerQcIpc() {
     if (!session) {
       return { ok: false, error: 'QC can only be paused while it is running.' }
     }
+    setRunControl(sessionId, 'paused')
+    workerSetHalt(true)
     return { ok: true, sessionId, state: session.state }
   })
 
@@ -82,6 +89,8 @@ export function registerQcIpc() {
     if (!session) {
       return { ok: false, error: 'QC can only be resumed while it is paused.' }
     }
+    setRunControl(sessionId, 'running')
+    workerSetHalt(false)
     return { ok: true, sessionId, state: session.state }
   })
 
@@ -94,10 +103,24 @@ export function registerQcIpc() {
     if (!session) {
       return { ok: false, error: 'QC can only be stopped while running or paused.' }
     }
+    setRunControl(sessionId, 'stopped')
+    workerSetHalt(true)
     return { ok: true, sessionId, state: session.state }
   })
 
   ipcMain.handle('qc:processRow', async (_event, payload) => processQcRow(payload))
+
+  ipcMain.handle('qc:pingInternet', async () => {
+    const online = await pingInternet()
+    return { ok: true, online }
+  })
+
+  ipcMain.handle('qc:clearRun', async (_event, payload) => {
+    const sessionId = payload?.sessionId
+    if (sessionId) clearRunControl(sessionId)
+    workerSetHalt(false)
+    return { ok: true }
+  })
 
   ipcMain.handle('qc:appendBatchResult', async (_event, payload) => {
     const sessionId = payload?.sessionId

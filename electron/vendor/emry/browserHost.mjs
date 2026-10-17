@@ -141,6 +141,19 @@ export async function workerItemDetail(sku) {
   return send('itemDetail', { sku })
 }
 
+/** Tell the headed Chrome worker to stop the in-flight portal scrape. */
+export function workerSetHalt(halted) {
+  if (!child || child.killed || child.exitCode != null || !child.stdin) return
+  const id = ++seq
+  const profilePath = getEmryChromeProfilePath()
+  const payload = JSON.stringify({
+    id,
+    cmd: halted ? 'halt' : 'clearHalt',
+    profilePath,
+  })
+  child.stdin.write(`${payload}\n`)
+}
+
 export async function workerCheck() {
   if (!child) {
     return {

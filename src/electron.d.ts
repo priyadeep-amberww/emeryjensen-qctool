@@ -47,6 +47,7 @@ export type QcProcessRowRequest = {
     | 'specificationSimilarityPercent'
   >
   brandAliases: BrandAliasPair[]
+  sessionId?: string
 }
 
 export interface ElectronQcBridge {
@@ -62,6 +63,7 @@ export interface ElectronQcBridge {
   }) => Promise<{ ok: true; count: number } | { ok: false; error: string }>
   exportBatch: (request: QcExportRequest) => Promise<QcExportResponse>
   processRow: (payload: QcProcessRowRequest) => Promise<QcProcessRowResponse>
+  pingInternet: () => Promise<{ ok: true; online: boolean }>
 }
 
 export type ElectronVendorScrapePayload = {

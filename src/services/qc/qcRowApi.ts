@@ -16,6 +16,13 @@ import {
 import type { AppendLogInput } from '../../types/log'
 import type { VendorLoginGateRefs } from '../vendorSession/vendorLoginGate'
 
+export class QcControlInterrupt extends Error {
+  constructor() {
+    super('QC run halted')
+    this.name = 'QcControlInterrupt'
+  }
+}
+
 export type ProcessQcRowContext = {
   rowIndex: number
   headless: boolean
@@ -24,6 +31,7 @@ export type ProcessQcRowContext = {
   brandAliases: readonly BrandAliasPair[]
   loginGateRefs: VendorLoginGateRefs
   appendLog: (input: AppendLogInput) => void
+  sessionId?: string
 }
 
 function qcBridge() {
@@ -51,6 +59,7 @@ async function invokeBackendProcessRow(
       specificationSimilarityPercent: context.settings.specificationSimilarityPercent,
     },
     brandAliases: [...context.brandAliases],
+    sessionId: context.sessionId,
   })
 }
 
@@ -78,9 +87,13 @@ export async function processQcRowForBatch(
   const response = await invokeBackendProcessRow(row, context)
 
   if (!response.ok) {
-    if (response.phase === 'vendor') {
+    if (response.kind === 'halted') {
+      throw new QcControlInterrupt()
+    }
+    const kind = normalizeScrapeErrorKind(response.kind)
+    if (response.phase === 'vendor' && kind !== 'parse') {
       throw new ScrapeOperationError({
-        kind: normalizeScrapeErrorKind(response.kind),
+        kind,
         message: response.error,
         sku: String(row.part_sku ?? row.sku ?? ''),
         retryable: true,
@@ -115,9 +128,10 @@ export async function processQcRowForSandbox(
   })
 
   if (!response.ok) {
-    if (response.phase === 'vendor') {
+    const kind = normalizeScrapeErrorKind(response.kind)
+    if (response.phase === 'vendor' && kind !== 'parse') {
       throw new ScrapeOperationError({
-        kind: normalizeScrapeErrorKind(response.kind),
+        kind,
         message: response.error,
         sku: String(row.part_sku ?? row.sku ?? ''),
         retryable: true,

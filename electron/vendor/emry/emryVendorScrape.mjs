@@ -86,9 +86,22 @@ export async function emryVendorScrapeListing(ctx) {
 
   const row = ctx.row ?? {}
   const partSku = pick(row, 'part_sku', 'sku') || `row-${ctx.rowIndex}`
-  const upc = normalizeUpc(pick(row, 'upc'))
+  const rawUpc = pick(row, 'upc')
+  const upc = normalizeUpc(rawUpc)
   if (!upc) {
-    return { ok: false, kind: 'parse', error: 'Row is missing a valid 12-digit UPC.' }
+    const shown = rawUpc || '(empty)'
+    return {
+      ok: true,
+      captureStatus: 'bad_parse',
+      extract: null,
+      confidence: 0,
+      log: [
+        `Skipped UPC search: "${shown}" is not an 11- or 12-digit UPC. Marking FAIL with blank capture and continuing.`,
+      ],
+      partSku,
+      upc: rawUpc,
+      rowVerdict: 'FAIL',
+    }
   }
 
   const lookup = await workerLookupUpc(upc)

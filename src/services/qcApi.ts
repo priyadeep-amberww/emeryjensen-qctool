@@ -65,6 +65,19 @@ export async function stopQcBatch(request: QcBatchControlRequest): Promise<QcBat
   return stopBatchInProcess(request)
 }
 
+export async function pingInternet(): Promise<boolean> {
+  const bridge = qcBridge()
+  if (bridge?.pingInternet) {
+    try {
+      const result = await bridge.pingInternet()
+      return result.online === true
+    } catch {
+      return false
+    }
+  }
+  return typeof navigator === 'undefined' ? true : navigator.onLine
+}
+
 export async function getQcBatchSession(sessionId: string): Promise<QcBatchSessionResponse> {
   const bridge = qcBridge()
   if (bridge?.getSession) {

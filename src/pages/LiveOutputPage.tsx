@@ -68,6 +68,8 @@ export function LiveOutputPage() {
     resume,
     stop,
     reset,
+    canStartFromLive,
+    startValidated,
   } = useBatchRun()
   const { getCompletedResults, resultsRevision } = useBatchResults()
   const { phase, statusMessage } = useErrorEngine()
@@ -170,8 +172,8 @@ export function LiveOutputPage() {
           </Typography>
           <QcControlBar
             status={status}
-            allowStart={false}
-            onStart={() => {}}
+            allowStart={canStartFromLive}
+            onStart={() => void startValidated()}
             onPause={() => void pause()}
             onResume={() => void resume()}
             onStop={() => void stop()}
@@ -306,7 +308,9 @@ export function LiveOutputPage() {
                   <TableCell colSpan={colSpan} sx={{ fontSize: '12px', color: 'text.secondary', py: 3 }}>
                     {status === 'running'
                       ? 'QC in progress — waiting for the first result…'
-                      : 'Press START to begin QC. Results appear here one by one.'}
+                      : canStartFromLive
+                        ? 'Press START to begin QC. Results appear here one by one.'
+                        : 'Validate a file on Upload, then press START. Results appear here one by one.'}
                   </TableCell>
                 </TableRow>
               )}

@@ -35,6 +35,14 @@ export function captureStatusLabel(status: CaptureStatus): string {
   }
 }
 
+function normalizeVerdict(verdict: CaptureRowPayload['verdict']): QcResult['verdict'] {
+  if (verdict == null) return undefined
+  const upper = String(verdict).trim().toUpperCase().replace(/[\s-]+/g, '_')
+  if (upper === 'PASS' || upper === 'FAIL' || upper === 'MANUAL_REVIEW') return upper
+  if (upper === 'MANUAL') return 'MANUAL_REVIEW'
+  return undefined
+}
+
 export function capturePayloadToQcResult(payload: CaptureRowPayload): QcResult {
   const sku =
     payload.identity.find((f) => f.key === 'sku')?.value ??
@@ -45,7 +53,7 @@ export function capturePayloadToQcResult(payload: CaptureRowPayload): QcResult {
     id: sku,
     identity: payload.identity,
     captureStatus: payload.captureStatus,
-    verdict: payload.verdict,
+    verdict: normalizeVerdict(payload.verdict),
     comparisons: payload.comparisons ?? [],
     sourceColumnLabel: 'Vendor (EJD)',
     targetColumnLabel: 'Amazon (SP-API)',
@@ -80,7 +88,7 @@ export function buildFailedQcResult(row: InputRow, errorMessage: string): QcResu
       { key: 'sku', label: 'SKU', value: sku },
       { key: 'listing_id', label: 'ASIN', value: asin },
     ],
-    verdict: 'MANUAL_REVIEW',
+    verdict: 'FAIL',
     comparisons: [
       {
         key: 'error',
