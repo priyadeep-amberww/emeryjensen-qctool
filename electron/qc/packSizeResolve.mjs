@@ -56,8 +56,8 @@ export function retailPackFromTitle(title) {
 }
 
 /**
- * Retail units from a vendor unit of measure such as PK/16 or 12 BX.
- * Order multiple is a case quantity and is not used here.
+ * Numeric pack from a vendor unit of measure such as PK/16 or 12 BX.
+ * Used only when the JSON record has no order multiple.
  * @param {string} raw
  * @returns {number | null}
  */
@@ -73,13 +73,15 @@ export function packFromUnitOfMeasure(raw) {
 }
 
 /**
+ * Vendor pack size is the JSON order multiple (O.M.).
+ * Title text is never a vendor pack. If order multiple is absent, the number
+ * in unit of measure is used. Otherwise the pack is 1.
  * @param {unknown} vendorExtract
  */
 export function extractVendorRetailPack(vendorExtract) {
-  const title =
-    vendorExtract?.identity?.title != null ? String(vendorExtract.identity.title) : ''
-  const fromTitle = retailPackFromTitle(title)
-  if (fromTitle != null) return fromTitle
+  const om = vendorExtract?.commercials?.order_multiple
+  const fromOm = positiveInt(om)
+  if (fromOm != null) return fromOm
   const fromUom = packFromUnitOfMeasure(vendorExtract?.logistics?.unit_of_measure)
   if (fromUom != null) return fromUom
   return 1

@@ -77,9 +77,9 @@ export const SIX_SKU_FIXTURES = [
     expect: {
       amazonBrand: 'Gardner Bender',
       amazonModel: '20-103',
-      vendorPack: 22,
+      vendorPack: 1,
       amazonPack: 22,
-      packOutcome: 'MATCH',
+      packOutcome: 'MISMATCH',
       brandOutcome: 'MATCH',
       modelOutcome: 'MATCH',
     },
